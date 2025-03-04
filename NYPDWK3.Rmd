@@ -1,0 +1,131 @@
+---
+title: "NYPD Shooting Data Report"
+author: "KJC"
+date: "2025-01-27"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+```
+
+## Data Importing & Summary
+
+**Key Question:** Within the NYPD data set, is there any statistical evidence of racial inequality for black victims during shooting incidents? 
+
+**Data Description:** The data is published by the united states government through data.gov, where the data gives overview of shooting incident data including information regarding the event description, time, location, and demographic data of those involved. The data is updated yearly, with data from 2006-2024. 
+
+The data can be accessed at https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic
+
+Descriptions of the non-intuitive column names are as follows: 
+
+BORO represents the borough that the incident occurred in.
+	
+STATISTICAL_MURDER_FLAG marks whether the shooting resulted in the death of the victim, such that it would be classified as a murder. 
+	
+JURISDICTION_CODE represents which jurisdiction the incident occurred in, with 0 representing patrol, 1 representing transit, and 2 representing housing, with 3 and above being not associated with the NYPD. 
+
+
+```{r imports}
+#importing in the data
+csv_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+nypd_cases <- read.csv(csv_in)
+nypd_cases <- subset(nypd_cases, select = -Latitude)
+nypd_cases <- subset(nypd_cases, select = -Longitude)
+nypd_cases <- subset(nypd_cases, select = -X_COORD_CD)
+nypd_cases <- subset(nypd_cases, select = -Y_COORD_CD)
+nypd_cases <- subset(nypd_cases, select = -Lon_Lat)
+nypd_cases <- unite(nypd_cases, PERP_VIC_RACES, PERP_RACE, VIC_RACE, sep = "_", remove = FALSE, na.rm = FALSE)
+
+#data types
+nypd_cases$OCCUR_DATE <- as.Date(nypd_cases$OCCUR_DATE)
+
+#cleaning up data typos
+nypd_cases = filter(nypd_cases, VIC_AGE_GROUP != "1022" & PERP_AGE_GROUP != "1020" & PERP_AGE_GROUP != "1028" & PERP_AGE_GROUP != "224" & PERP_AGE_GROUP != "940") 
+nypd_cases$PERP_RACE[nypd_cases$PERP_RACE==''] <- "UNKNOWN"
+nypd_cases$PERP_RACE[nypd_cases$PERP_RACE=='(null)'] <- "UNKNOWN"
+nypd_cases$PERP_AGE_GROUP[nypd_cases$PERP_AGE_GROUP==''] <- "UNKNOWN"
+nypd_cases$PERP_AGE_GROUP[nypd_cases$PERP_AGE_GROUP=='(null)'] <- "UNKNOWN"
+
+#printing summary
+summary(nypd_cases)
+
+```
+
+## Visualizations & Models
+
+```{r data_vis}
+#borough data
+g <- ggplot(nypd_cases, aes(BORO))
+g + geom_bar(aes(fill = STATISTICAL_MURDER_FLAG)) + ggtitle("Boroughs of the Incidents")
+
+#victim race
+ggplot(nypd_cases) + geom_bar(aes(y = VIC_RACE, fill = STATISTICAL_MURDER_FLAG)) + theme(legend.position = "top") + ggtitle("Victim Race Data")
+
+#race analysis
+count(nypd_cases,VIC_RACE=="BLACK"&STATISTICAL_MURDER_FLAG=="true") #/count(nypd_cases,VIC_RACE=="BLACK")
+#What is the percent chance a black victim is killed in an encounter compared to white victims?
+3851/(24706+3851)*100
+count(nypd_cases,VIC_RACE=="WHITE"&STATISTICAL_MURDER_FLAG=="true") #/count(nypd_cases,VIC_RACE=="WHITE")
+#Percent chance a white victim is killed in an encounter
+196/(196+28361)*100
+
+#victim age
+ggplot(nypd_cases) + geom_bar(aes(y = VIC_AGE_GROUP, fill = STATISTICAL_MURDER_FLAG)) + theme(legend.position = "top") + ggtitle("Victim Age Data")
+
+#victim gender
+ggplot(nypd_cases) + geom_bar(aes(y = VIC_SEX, fill = STATISTICAL_MURDER_FLAG)) + theme(legend.position = "top") + ggtitle("Victim Sex Data")
+
+#perpetrator age and race
+ggplot(nypd_cases, aes(PERP_AGE_GROUP, PERP_RACE)) +
+ geom_count() + theme(axis.text.x = element_text(angle = 45)) + ggtitle("Perpetrator Age and Race")
+
+#Are white cops more likely to be in an incident with a fatality?
+count(nypd_cases,PERP_RACE=="WHITE")
+count(nypd_cases,PERP_RACE=="WHITE"&STATISTICAL_MURDER_FLAG=="true")
+#percentage of incidents with fatalities for white cops
+111/298*100
+count(nypd_cases,PERP_RACE!="WHITE"&PERP_RACE!="UNKNOWN")
+count(nypd_cases,PERP_RACE!="WHITE"&PERP_RACE!="UNKNOWN"&STATISTICAL_MURDER_FLAG=="true")
+#percentage of incidents with fatalities for non-white cops
+3439/15971*100
+
+#victim and perpetrator race
+ggplot(nypd_cases, aes(VIC_RACE, PERP_RACE)) +
+ geom_count() + theme(axis.text.x = element_text(angle = 90)) + ggtitle("Victim and Perpetrator Race")
+
+#Do black victims have higher mortality rates with white cops?
+#white and black
+count(nypd_cases,VIC_RACE=="BLACK"&STATISTICAL_MURDER_FLAG=="true"&PERP_RACE=="WHITE") 
+count(nypd_cases,VIC_RACE=="BLACK"&PERP_RACE=="WHITE") 
+#probability that in an encounter between a white cop and a black victim, the incident is fatal
+9/42*100
+#black and non-white
+count(nypd_cases,VIC_RACE=="BLACK"&STATISTICAL_MURDER_FLAG=="true"&PERP_RACE!="WHITE"&PERP_RACE!="UNKNOWN") 
+count(nypd_cases,VIC_RACE=="BLACK"&PERP_RACE!="WHITE"&PERP_RACE!="UNKNOWN") 
+#probability that in an encounter between a non-white cop and a black victim, the incident is fatal
+2309/10872*100
+
+```
+
+## Bias Information
+
+I tend to be more left-leaning politically, so my instinct is to favor the victim in these situations. In light of the BLM movement, I am also more aware of the racial injustice and discriminatory aspects of events like these. 
+
+In order to minimize the impact of my biases, I tried to intentionally look for data that would speak against my preconceived notions, and to look at factors that I normally wouldn’t be interested in, such as location. 
+
+## Conclusion
+
+We were able to find some statistical differences between black and white victims in these shootings. Black victims had an overall higher fatality than white victims during these incidents, and white cops also displayed a higher rate of fatalities in incidents they were involved in. However, when looking at only incidents where there was a death of a black victim, the race of the cop didn't have a statistically significant difference. 
+
+## Session Info
+
+```{r sessInfo, echo=FALSE}
+sessionInfo()
+```
+
